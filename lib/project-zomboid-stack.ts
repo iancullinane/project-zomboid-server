@@ -98,8 +98,9 @@ export class ProjectZomboidSimpleServer extends Stack {
         return
       }
     
-      // This is actually unused, see below
+
       let modConfig = v.split(/\s+/)
+      // `steamcmdMods` is actually unused, see below
       steamcmdMods[i] = `+workshop_download_item 380870 ${modConfig[0]}`      
       workshopIDArray.push(`${modConfig[0]}`)
       modsNamesArray.push(`${modConfig[1]}`)
