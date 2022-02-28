@@ -1,15 +1,23 @@
 import * as cdk from "aws-cdk-lib";
+import { Construct } from "constructs";
 import { Stack, StackProps } from "aws-cdk-lib";
+
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as r53 from "aws-cdk-lib/aws-route53";
 import { Asset } from "aws-cdk-lib/aws-s3-assets";
+import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
+import * as elbTargets from "aws-cdk-lib/aws-elasticloadbalancingv2-targets";
+ 
+
 import { CfnModelBiasJobDefinition } from "aws-cdk-lib/aws-sagemaker";
-import { Construct } from "constructs";
 import * as fs from "fs";
 import * as path from "path";
+
+
 import { ProjectRole } from "./components/project-role";
 import { ZomboidAccess } from "./components/zomboid-access";
 import { ResourceLookupStack } from "./nested-stacks/lookup";
+import { GameServerStack } from "@ianpants/project-zomboid-server"
 
 export class ProjectZomboidSimpleServer extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
@@ -46,16 +54,6 @@ export class ProjectZomboidSimpleServer extends Stack {
     });
     s3UnitFile.grantRead(role.role);
 
-    // const iniFile = new Asset(this, "pz-ini-file", {
-    //   path: "./assets/server-config/adventurebrave.ini",
-    // });
-    // iniFile.grantRead(role.role);
-
-    // const luaFile = new Asset(this, "pz-lua-file", {
-    //   path: "./assets/server-config/adventurebrave_SandboxVars.lua",
-    // });
-    // luaFile.grantRead(role.role);
-
     // We will be adding more to this as we go
     const multipartUserData = new ec2.MultipartUserData();
 
@@ -79,108 +77,52 @@ export class ProjectZomboidSimpleServer extends Stack {
       `sudo usermod -aG docker steam`
     );
     
-    // Start compile config
-    // I would actually do this as a seperate container but I was interested
-    // in writing some code direct into the cdk file
-    let steamcmdMods = Array<string>();
-    let modsNamesArray = Array<string>();
-    let workshopIDArray = Array<string>();
-
-    // Read the local mods folder
-    var modInstallArray = fs
+    var iniTemplateFile = fs
+      .readFileSync(path.join(__dirname, "..", "assets", "server_template.ini"))
+    // Build configs from mod files
+    var modFile = fs
       .readFileSync(path.join(__dirname, "..", "assets", "mods.txt"))
-      .toString()
-      .split("\n");  
+
     
-    // Populate arrays from file
-    modInstallArray.forEach((v, i) => {
-      if (v === ""){
-        return
-      }
-    
-      // This is actually unused, see below
-      let modConfig = v.split(/\s+/)
-      steamcmdMods[i] = `+workshop_download_item 380870 ${modConfig[0]}`      
-      workshopIDArray.push(`${modConfig[0]}`)
-      modsNamesArray.push(`${modConfig[1]}`)
-    });
+    // let config = buildServerConfig(
+    //   multipartUserData,
+    //   s3Assets,
+    //   s3UnitFile,
+    //   modInstallFile
+    // )
+    var gameServerConfig = new GameServerStack(this, "game-config", {
+      serverConfigFolder,
+      unitFile,
+      modFile,
+      iniTemplateFile
+  // configAssets: Asset,
+  // unitFileAsset: Asset,
+  // templateFile?: Buffer,
+  // modFile?: Buffer,
+  // serverName?: string
+    })
 
-    // Open .ini file, put mods in correct places
-    var iniFileTemplate = fs
-      .readFileSync(path.join(__dirname, "..", "assets", "adventurebrave_template.ini"))
-      .toString()
-      .split("\n"); 
-    iniFileTemplate.pop() // this will be empty stupid format on save
-    // Fill in mod config for server
-    iniFileTemplate.forEach((v, i) => {
-      v === "Mods=" ? iniFileTemplate[i] = `Mods=${modsNamesArray.join(";")}` : null ;
-      v === "WorkshopItems=" ? iniFileTemplate[i] = `WorkshopItems=${workshopIDArray.join(";")}` : null ;
-    });
+    // multipartUserData.addUserDataPart(gameServerConfig.)
 
-    // Write "real" .ini file
-    var file = fs.createWriteStream('./assets/server-config/adventurebrave.ini');
-    file.on('error', (err) => { console.log(`error writing file: ${err}`) });
-    iniFileTemplate.forEach((v) => {  file.write(`${v}\n`)});
-    file.end();
-
-    // --- end compile config
-    
-    // Print result if I want to look it over
-    console.log(workshopIDArray)
-    console.log(modsNamesArray)
-
-
-    // Install steam commands
-    // You can ask the steamcmd container to dl workshop items (compiled into
-    // steamcmdMods variable), but you need to login, took awhile to figure 
-    // this out the the feature exists I just don't use it, the following 
-    // will used the compiled mods config to provide steamcmd with the right args:
-    // ${steamcmdMods.join(' ')} \
-    let installCommands: string[] = [
-      `echo "---- Install PZ"`,
-      `mkdir /home/steam/pz`,
-      `docker run -v /home/steam/pz:/data steamcmd/steamcmd:ubuntu-18 \
-      +login anonymous \
-      +force_install_dir /data \
-      +app_update 380870 validate \
-      +quit`
-    ]
-
-    // Object to hold future UserData
-    multipartUserData.addCommands(...installCommands);
-
-    // Zip up config directory, I know this will zip because I am using the
-    // folder as my `localFile`
-    multipartUserData.addS3DownloadCommand({
-      bucket: s3Assets.bucket,
-      bucketKey: s3Assets.s3ObjectKey,
-      localFile: "/home/steam/files/",
-    });
-
-    // This will be a single object because it is a filename
-    multipartUserData.addS3DownloadCommand({
-      bucket: s3UnitFile.bucket,
-      bucketKey: s3UnitFile.s3ObjectKey,
-      localFile: "/etc/systemd/system/projectzomboid.service",
-    });
-
-    // Place, enable, and start the service
-    multipartUserData.addCommands(
-      `mkdir -p /home/steam/pz/Server/`, // Just in case
-      `unzip /home/steam/files/${s3Assets.s3ObjectKey} -d /home/steam/pz/Server/`,
-      `chmod +x /etc/systemd/system/projectzomboid.service`,
-      `systemctl enable projectzomboid.service`,
-    );
+    console.log("In main")
+    console.log(gameServerConfig)
 
     // ---- Start server
     const instance = new ec2.Instance(this, "project-zomboid-ec2", {
       instanceType: new ec2.InstanceType("t2.medium"),
       machineImage: machineImage,
       vpc: vpc,
-      keyName: "...",
+      keyName: "pz-mac",
       securityGroup: sg,
       role: role.role,
       userData: multipartUserData,
+    });
+
+    let eip = new ec2.CfnEIP(this, "Ip");
+
+    let ec2Assoc = new ec2.CfnEIPAssociation(this, "Ec2Association", {
+      eip: eip.ref,
+      instanceId: instance.instanceId
     });
 
     // todo::Tags are easier now but I am still lazy, more tags
@@ -225,6 +167,37 @@ export class ProjectZomboidSimpleServer extends Stack {
 
     // add the pz ingress rules
     instance.addSecurityGroup(zomboidServerSg);
+
+// 
+// 
+// 
+
+    const lb = new elbv2.NetworkLoadBalancer(this, 'simple-lb', {
+      vpc,
+      internetFacing: true
+    });
+
+    // const listener = lb.addListener('Listener', {
+    //   port: 16261,
+    //   protocol: elbv2.Protocol.TCP_UDP,
+    //   // certificates: [{
+    //   //   certificateArn: "arn:aws:acm:us-east-1:346096930733:certificate/f77c70fb-b512-427c-8707-ed09784838f0"
+    //   // }],
+    // });
+
+    // const instanceIdTarget = new elbTargets.InstanceIdTarget(instance.instanceId, 16261);
+    // const group = listener.addTargets('Target', {
+    //   port: 16261,
+    //   protocol: elbv2.Protocol.TCP_UDP,
+    //   targets: [instanceIdTarget]
+    // });
+
+    // group.node.addDependency(vpc.internetConnectivityEstablished);
+// 
+// 
+// 
+
+
 
     // Add a hosted zone, each game is one server, one subdomain, plan accordingly
     const pzHZ = new r53.PublicHostedZone(this, "HostedZoneDev", {
