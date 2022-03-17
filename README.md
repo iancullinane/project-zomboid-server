@@ -21,3 +21,31 @@ CDK and config for a Project Zomboid server
     //   // The volume will now be mounted. You may have to add additional code to format the volume if it has not been prepared.
     // );
 ```
+
+### Network Load Balancer
+
+```
+const vpc = new ec2.Vpc(stack, 'VPC', {
+  maxAzs: 2
+});
+
+const lb = new elbv2.NetworkLoadBalancer(stack, 'LB', {
+  vpc,
+  internetFacing: true
+});
+
+const listener = lb.addListener('Listener', {
+  port: 443,
+  certificates: [{
+    certificateArn: "foo"
+  }],
+});
+
+const group = listener.addTargets('Target', {
+  port: 443,
+  targets: [new elbv2.IpTarget('10.0.1.1')]
+});
+
+group.node.addDependency(vpc.internetConnectivityEstablished);
+
+```
