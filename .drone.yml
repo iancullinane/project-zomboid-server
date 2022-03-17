@@ -3,7 +3,13 @@ name: default
 
 steps:
 
-- name: aws-cdk
-  image: eignhpants/docker-aws-cdk
-  commands:
-  - cdk synth
+  - name: compile
+    image: node
+    commands:
+      - npm install
+      - ./node_modules/typescript/bin/tsc
+
+  - name: aws-cdk
+    image: eignhpants/docker-aws-cdk
+    commands:
+    - cdk synth
