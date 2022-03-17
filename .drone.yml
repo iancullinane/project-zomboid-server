@@ -1,0 +1,9 @@
+kind: pipeline
+name: default
+
+steps:
+
+- name: aws-cdk
+  image: eignhpants/docker-aws-cdk
+  commands:
+  - cdk synth
