@@ -3,6 +3,14 @@ import * as r53 from "aws-cdk-lib/aws-route53";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 
+export interface LookUpProps extends cdk.NestedStackProps {
+  vpcId: string,
+  sgId: string,
+  hostedZoneID: string,
+  hostedZoneName: string,
+  subdomain: string,
+}
+
 // Provides lookups from an existing environment, nested so the underlying
 // lookups can be updated 
 export class ResourceLookupStack extends cdk.NestedStack {
@@ -13,24 +21,32 @@ export class ResourceLookupStack extends cdk.NestedStack {
   public readonly hz: r53.IHostedZone;
 
   // TODO::Make a real props object to make this not hardcoded
-  constructor(scope: Construct, id: string, props?: cdk.NestedStackProps) {
+  constructor(scope: Construct, id: string, props?: LookUpProps) {
     super(scope, id, props);
 
-    // The default is public so proceed accordingly
+    if (props === undefined) {
+      console.log("TODO");
+      return
+    }
+
+    // Expects you to know VPC name
+    // Could also do an Fn.Import
     this.vpc = ec2.Vpc.fromLookup(this, "Vpc", {
-      isDefault: true,
+      vpcId: props?.vpcId
     });
 
     this.sg = ec2.SecurityGroup.fromSecurityGroupId(
       this,
-      "central-access-sg",
-      "sg-0ee14c2817414038f"
+      `vpc-security-group-${this.vpc.vpcId}`,
+      props.sgId
     );
 
+    // This method is preferred because using the `fromHostedZone` lookup
+    // causes you to lose the zone name, which is used downstream
     this.hz = r53.HostedZone.fromHostedZoneAttributes(
       this,
-      "adventurebrave-hostedzone",
-      { zoneName: "adventurebrave.com", hostedZoneId: "Z2URBRDZG4MDWO" }
+      `${props.hostedZoneName}.com-${props.hostedZoneID}`,
+      { zoneName: props.hostedZoneName, hostedZoneId: props.hostedZoneID }
     );
   }
 

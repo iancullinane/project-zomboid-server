@@ -18,6 +18,7 @@ import { Construct } from "constructs";
 
 export interface AllowLocalProps {
   sg: ec2.SecurityGroup;
+  cidr: string;
 }
 
 export class AllowLocal extends Construct {
@@ -25,9 +26,8 @@ export class AllowLocal extends Construct {
   constructor(scope: Construct, id: string, props: AllowLocalProps) {
     super(scope, id);
 
-    // todo::prop for IP
     props.sg.addIngressRule(
-      ec2.Peer.ipv4(".../32"),
+      ec2.Peer.ipv4(props.cidr),
       ec2.Port.tcp(22),
       "local"
     );

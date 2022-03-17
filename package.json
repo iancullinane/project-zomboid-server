@@ -1,6 +1,8 @@
 {
-  "name": "project-zomboid",
+  "name": "@ianpants/project-zomboid-server",
   "version": "0.1.0",
+  "main": "lib/project-zomboid-construct.js",
+  "types": "lib/project-zomboid-construct.d.ts",
   "bin": {
     "project-zomboid": "bin/project-zomboid.js"
   },
@@ -11,16 +13,18 @@
     "cdk": "cdk"
   },
   "devDependencies": {
-    "aws-cdk": "2.0.0",
-    "@types/jest": "^26.0.10",
-    "@types/node": "10.17.27",
-    "jest": "^26.4.2",
-    "ts-jest": "^26.2.0",
-    "ts-node": "^9.0.0",
-    "typescript": "~3.9.7"
+    "@types/jest": "^27.4.1",
+    "@types/node": "17.0.21",
+    "aws-cdk": "2.16.0",
+    "jest": "^27.5.1",
+    "ts-jest": "^27.1.3",
+    "ts-node": "^10.7.0",
+    "typescript": "~4.6.2"
   },
   "dependencies": {
-    "aws-cdk-lib": "2.0.0",
-    "constructs": "^10.0.0"
+    "@ianpants/project-zomboid-server": "^0.49.0",
+    "aws-cdk-lib": "2.16.0",
+    "constructs": "^10.0.87",
+    "template-file": "^6.0.1"
   }
 }
