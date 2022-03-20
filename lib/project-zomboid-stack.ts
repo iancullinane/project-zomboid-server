@@ -10,12 +10,23 @@ import { ProjectRole } from "./components/project-role";
 import { ResourceLookupStack } from "./nested-stacks/lookup";
 import { GameServerStack, ServerConfig, GameServerProps } from "@ianpants/project-zomboid-server"
 
-interface ConfigProps extends cdk.StackProps {
-  cfg: ServerConfig;
+export interface ConfigProps extends cdk.StackProps {
+  region: string,
+  ami: string,
+  keyName: string,
   vpcId: string;
   securityGroupId: string;
-  keyName: string;
+  hostedzoneid: string,
+  subdomain: string,
+  servername: string,
+  instancetype: string,
+  public: boolean,
+  fresh: boolean,
 }
+
+// interface ConfigProps extends cdk.StackProps {
+//   cfg: ServerConfig;
+// }
 
 const DIST_DIR = "./assets/dist/"
 
@@ -40,7 +51,7 @@ export class ProjectZomboidSimpleServer extends Stack {
 
     // const vpc = new 
     sg.addIngressRule(
-      Peer.ipv4("..."),
+      Peer.ipv4("108.49.70.185/0"),
       Port.tcp(22),
       "ssh for local"
     );
