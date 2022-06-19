@@ -1,34 +1,27 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import { Stack, StackProps } from "aws-cdk-lib";
-import { Peer, Port } from "aws-cdk-lib/aws-ec2";
-
+import * as ec2 from "aws-cdk-lib/aws-ec2";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as fs from "fs";
 import * as path from "path";
 
 import { ProjectRole } from "./components/project-role";
-import { ResourceLookupStack } from "./nested-stacks/lookup";
-import { GameServerStack, ServerConfig, GameServerProps } from "@ianpants/project-zomboid-server"
+import { VPCLookup, HostedZoneLookupStack } from "@ianpants/pants-constructs";
+import { GameServerStack, InfraConfig, GameConfig } from "@ianpants/project-zomboid-server"
 
 export interface ConfigProps extends cdk.StackProps {
   region: string,
-  ami: string,
   keyName: string,
   vpcId: string;
   securityGroupId: string;
-  hostedzoneid: string,
+  domainname: string,
   subdomain: string,
   servername: string,
   instancetype: string,
   public: boolean,
   fresh: boolean,
 }
-
-// interface ConfigProps extends cdk.StackProps {
-//   cfg: ServerConfig;
-// }
-
-const DIST_DIR = "./assets/dist/"
 
 export class ProjectZomboidSimpleServer extends Stack {
   constructor(scope: Construct, id: string, props: ConfigProps) {
@@ -37,69 +30,94 @@ export class ProjectZomboidSimpleServer extends Stack {
     // ---- Lookups
     // Use a nestded stack
     // unpack lookups
-    const { vpc, sg, hz } = new ResourceLookupStack(
-      this,
-      "resource-lookup-stack",
-      {
-        vpcId: props.vpcId,
-        sgId: props.securityGroupId,
-        hostedZoneID: props.cfg.hostedzoneid!,
-        hostedZoneName: "pz.adventurebrave.com",
-        subdomain: props.cfg.subdomain!,
-      }
-    );
+    // const { vpc, sg, hz, vol } = new ResourceLookupStack(
+    //   this,
+    //   "resource-lookup-stack",
+    //   {
+    //     vpcId: props.vpcId,
+    //     sgId: props.securityGroupId,
+    //     domainname: props.domainname!,
+    //     subdomain: props.subdomain!,
+    //   }
+    // );
+    let vpcLookup = new VPCLookup(this, `${props.servername}-vpc-lookup`, { vpcId: props.vpcId })
+
+    const projectRole = new ProjectRole(this, `${props.servername}-project-role`);
+    cdk.Tags.of(projectRole).add("game", `${props.servername}-projectzomboid`);
+
+
+    let appSG = new ec2.SecurityGroup(this, `${props.servername}-security-group`, {
+      vpc: vpcLookup.vpc,
+    })
+
+    let hz = new HostedZoneLookupStack(this, `${props.servername}-hosted-zone-lookup`, {
+      domainName: `${props.domainname}`
+    })
+
+    let vol = new ec2.Volume(this, `${props.domainname}-vol`, {
+      availabilityZone: 'us-east-2a',
+      size: cdk.Size.gibibytes(20),
+    });
+    cdk.Tags.of(vol).add("game", `pz-${props.subdomain}-vol`);
+    cdk.Tags.of(vol).add("Name", `pz-${props.subdomain}-vol`);
+
+
+    let infra = {
+      vpc: vpcLookup.vpc, // should be derived
+      keyName: props.keyName,
+      region: props.region,
+      role: projectRole.role, // should be made here
+      subdomain: props.subdomain,
+      hostedzoneid: hz.hz.hostedZoneId, // Should be derived
+      instancetype: props.instancetype, // should use some kind of map
+      sg: appSG, // should be here
+      hz: hz, // should be dervice
+      vol: vol, // made here? ephemeral solution?
+    }
 
     // const vpc = new 
-    sg.addIngressRule(
-      Peer.ipv4("108.49.70.185/0"),
-      Port.tcp(22),
-      "ssh for local"
-    );
+    // TODO::SG should be local to the app
+    // sg.addIngressRule(
+    //   Peer.ipv4("108.49.70.185/0"),
+    //   Port.tcp(22),
+    //   "ssh for local"
+    // );
+
     // const hz = new HostedZone(this, "hosted-zone", {
     //   zoneName: `${props?.cfg.subdomain}.${props?.cfg.servername}.com`,
     // })
 
     // Stack role
-    const projectRole = new ProjectRole(this, "project-role");
-
-    cdk.Tags.of(projectRole).add("game", "projectzomboid");
 
 
-    // const modFile = fs.readFileSync(path.join(process.cwd(), "assets", "mods.txt"));
-    // props.cfg.modFile = modFile;
-    // console.log("try and start");
+    // See README for mod file format
+    // TODO::Optional if local?
+    const modFile = fs.readFileSync(path.join(process.cwd(), "assets", "mods.txt"));
 
-    // (() => {
+    let game = {
+      fileList: [
+        "_server.ini",
+        "_SandboxVars.lua",
+        "_spawnregions.lua",
+        "_spawnpoints.lua"
+      ],
+      distdir: "assets/dist",
+      servername: props.servername,
+      modFile: modFile,
+      public: props.public,
+      fresh: props.fresh,
+    }
 
-    // })
 
-
-
-    // fs.readdir(DIST_DIR, (err, files) => {
-    //   if (err) throw err;
-    //   for (const file of files) {
-    //     console.log(file);
-    //     fs.stat(path.join(DIST_DIR, file), function (err, fileProps) {
-    //       err ? console.log(err) : null;
-    //       fileProps.isDirectory() ? console.log("recurse") : console.log(file);
-    //       // stats.isFile();
-    //       // stats.isDirectory();
-    //       // stats.isSymbolicLink();
-    //     });
-    //     // fs.unlink(path.join(DIST_DIR, file), err => {
-    //     //   if (err) throw err;
-    //     // });
-    //   }
-    // });
 
     // Process files needed for a server
     var gameServerConfig = new GameServerStack(this, "game-config", {
-      cfg: props!.cfg,
-      role: projectRole.role,
-      vpc: vpc,
-      sg: sg,
-      hz: hz,
+      game: game,
+      infra: infra,
     })
+
+    // console.log(gameServerConfig.node.findAll())
+    // console.log(gameServerConfig.userData)
 
   }
 }
