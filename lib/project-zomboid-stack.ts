@@ -50,7 +50,7 @@ export class ProjectZomboidSimpleServer extends Stack {
       vpc: vpcLookup.vpc,
     })
 
-    let hz = new HostedZoneLookupStack(this, `${props.servername}-hosted-zone-lookup`, {
+    let hzLookup = new HostedZoneLookupStack(this, `${props.servername}-hosted-zone-lookup`, {
       domainName: `${props.domainname}`
     })
 
@@ -68,10 +68,10 @@ export class ProjectZomboidSimpleServer extends Stack {
       region: props.region,
       role: projectRole.role, // should be made here
       subdomain: props.subdomain,
-      hostedzoneid: hz.hz.hostedZoneId, // Should be derived
+      hostedzoneid: hzLookup.hz.hostedZoneId, // Should be derived
       instancetype: props.instancetype, // should use some kind of map
       sg: appSG, // should be here
-      hz: hz, // should be dervice
+      hz: hzLookup.hz, // should be dervice
       vol: vol, // made here? ephemeral solution?
     }
 
